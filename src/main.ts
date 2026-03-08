@@ -79,11 +79,11 @@ function edgeLengths(points: Point[]): number[] {
   return lengths;
 }
 
-// Optimal count: each edge needs floor(length/radius) intervals.
+// Optimal count: each edge needs ceil(length/radius) intervals.
 // Corner sprinklers are shared between adjacent edges.
-// Total = sum(floor(edge_length / radius)) across all edges.
+// Total = sum(ceil(edge_length / radius)) across all edges.
 function optimalSprinklerCount(points: Point[], radius: number): number {
-  return edgeLengths(points).reduce((sum, len) => sum + Math.floor(len / radius), 0);
+  return edgeLengths(points).reduce((sum, len) => sum + Math.ceil(len / radius), 0);
 }
 
 // --- Deterministic target positions ---
@@ -97,7 +97,7 @@ function computeTargetPositions(boundary: Point[], radius: number): TargetInfo[]
     const b = boundary[(i + 1) % boundary.length];
     const edge = sub(b, a);
     const len = magnitude(edge);
-    const intervals = Math.floor(len / radius);
+    const intervals = Math.ceil(len / radius);
     if (intervals <= 0) continue;
     const spacing = len / intervals;
     for (let j = 0; j < intervals; j++) {
@@ -800,7 +800,7 @@ document.getElementById("panelToggle")!.addEventListener("click", () => {
     edges: lengths.map((len, i) => ({
       label: `${vertexLabel(i)}-${vertexLabel((i + 1) % boundaryPoints.length)}`,
       length: Math.round(len),
-      optimal: Math.floor(len / radius),
+      optimal: Math.ceil(len / radius),
       actual: edgeCounts[i],
     })),
     sprinklers: sorted.map((pIdx, displayIdx) => {
