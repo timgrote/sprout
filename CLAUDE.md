@@ -2,15 +2,17 @@
 
 ## Project Overview
 
-Sprout is a browser-based sprinkler layout sandbox using force-directed particle simulation. Users draw a boundary polygon, then sprinklers spawn at the centroid and migrate to the boundary through physics — boundary attraction, corner preference, and inter-particle repulsion. An emergent/agent-based approach to sprinkler placement instead of deterministic spacing math.
+Sprout is a browser-based sprinkler layout sandbox. Users draw a boundary polygon, then sprinklers are placed deterministically along edges with uniform spacing — each edge gets `floor(length/radius)` sprinklers. Particles animate from the centroid to their pre-computed targets using spring physics with inter-particle repulsion for visual interest.
 
 ## Commands
 
 ```bash
-bun run dev      # Dev server (serves index.html with TS transpilation)
+bun run dev      # Dev server on port 5555 (serves index.html with TS transpilation)
 bun run build    # Bundle to dist/ (browser target)
 bun run serve    # Serve the built dist/ folder
 ```
+
+**Dev server is always at http://localhost:5555.** Do not use other ports. If the server is already running, reuse it — don't start a second instance.
 
 No test runner or linter configured.
 
@@ -20,13 +22,22 @@ Single-file TypeScript app (`src/main.ts`) rendered on a full-viewport HTML canv
 
 **App flow:**
 1. **Boundary drawing** — click to place polygon vertices (labeled A, B, C...), Enter to close
-2. **Simulation** — Space to start. Particles spawn at centroid, three forces act per frame: boundary spring, corner attraction, inter-particle repulsion (linear falloff). Euler integration with damping.
-3. **Settlement** — particles snap to boundary when slow + close enough. Numbered 1-N in perimeter order.
-4. **Add sprinkler** — drops one at centroid, unsettles the receiving edge so neighbors redistribute.
+2. **Target computation** — `computeTargetPositions()` walks each edge, places `floor(len/radius)` evenly-spaced targets. Corner vertices get exactly one sprinkler (shared between adjacent edges).
+3. **Animated migration** — Space to start. Particles spawn at centroid, two forces per frame: target spring attraction (pulls toward assigned target) and inter-particle repulsion (visual interest during migration). Repulsion fades as particles approach targets for clean settlement.
+4. **Settlement** — particles snap to exact target when close + slow. ~1.5s total animation.
+5. **Add sprinkler** — finds edge with largest gap, recomputes even spacing for that edge +1, animates redistribution.
 
-**UI panels** (fixed overlays): simulation params, force coefficients, stats (perimeter, suggested/actual count).
+**Polygon editing (post-settlement):**
+- **Drag vertices** — click and drag any vertex to reshape; live preview during drag, full re-simulation on release
+- **Right-click context menu** — add vertex (midpoint insertion) or delete vertex (min 3); auto-resimulates
 
-**Debug:** `window.getState()` returns full state — vertices with labels, sprinklers numbered in perimeter order with edge assignments. Works anytime regardless of who started the sim.
+**UI:** Compact bottom bar with controls (count, radius, forces) and stats. Collapsible via Tab key or hamburger button.
+
+**Labels:** Vertex labels (A, B, C...) offset outward along the bisector between adjacent edges. Sprinkler numbers offset inward — perpendicular to edge for mid-edge sprinklers, along inward bisector for corner sprinklers.
+
+**Logging:** Simulation events logged to console (`[sprout]` prefix) and available via `getState().logs`. Logs START config, each SETTLED event with edge/position/speed, and COMPLETE summary with per-edge actual vs optimal counts.
+
+**Debug:** `window.getState()` returns full state — vertices, edges (with actual vs optimal counts), sprinklers in perimeter order with edge assignments, and simulation logs.
 
 ## Tech Stack
 

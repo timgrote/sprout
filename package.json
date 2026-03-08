@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Sprinkler layout sandbox — emergent design through animation",
   "scripts": {
-    "dev": "bun --hot index.html",
+    "dev": "bun --hot --port 5555 index.html",
     "build": "bun build src/main.ts --outdir dist --target browser",
     "serve": "bunx serve dist"
   },

@@ -9,60 +9,88 @@
     html, body { width: 100%; height: 100%; overflow: hidden; }
     body { background: #1a1a2e; font-family: system-ui; }
     canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
-    #controls { position: fixed; top: 12px; left: 12px; color: #aaa; font-size: 18px; }
-    #controls kbd { background: #333; padding: 3px 8px; border-radius: 3px; font-size: 16px; }
-    #panel {
-      position: fixed; top: 12px; right: 12px; background: rgba(20, 20, 40, 0.92);
-      border: 1px solid #333; border-radius: 6px; padding: 12px 16px;
-      color: #aaa; font-size: 16px; min-width: 220px;
+    #controls { position: fixed; top: 12px; left: 12px; color: #aaa; font-size: 14px; }
+    #controls kbd { background: #333; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+    #bottomBar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      display: flex; align-items: stretch;
+      background: rgba(20, 20, 40, 0.94);
+      border-top: 1px solid #333;
+      font-size: 13px; color: #aaa;
     }
-    #panel h3 { color: #4ecdc4; font-size: 18px; margin-bottom: 8px; font-weight: 500; }
-    #panel label { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; }
+    #panel {
+      display: flex; align-items: center; gap: 6px;
+      padding: 8px 12px; flex-wrap: wrap;
+    }
+    #panel .sep { width: 1px; height: 20px; background: #333; margin: 0 4px; }
+    #panel label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
     #panel input[type="number"] {
-      width: 72px; background: #222; border: 1px solid #444; border-radius: 3px;
-      color: #ddd; padding: 4px 8px; font-size: 16px; text-align: right;
+      width: 52px; background: #222; border: 1px solid #444; border-radius: 3px;
+      color: #ddd; padding: 3px 5px; font-size: 13px; text-align: right;
     }
     #panel input[type="number"]:focus { outline: none; border-color: #4ecdc4; }
-    #panel hr { border: none; border-top: 1px solid #333; margin: 8px 0; }
     #panel button {
-      width: 100%; padding: 8px; margin-top: 6px; background: #333; border: 1px solid #444;
-      border-radius: 3px; color: #ddd; font-size: 16px; cursor: pointer;
+      padding: 4px 10px; background: #333; border: 1px solid #444;
+      border-radius: 3px; color: #ddd; font-size: 13px; cursor: pointer; white-space: nowrap;
     }
     #panel button:hover { background: #444; border-color: #4ecdc4; }
-    #stats { position: fixed; bottom: 12px; right: 12px; background: rgba(20, 20, 40, 0.92);
-      border: 1px solid #333; border-radius: 6px; padding: 12px 16px;
-      color: #aaa; font-size: 16px; min-width: 260px; font-variant-numeric: tabular-nums; }
-    #stats h3 { color: #4ecdc4; font-size: 18px; margin-bottom: 8px; font-weight: 500; }
-    #stats div { margin: 4px 0; display: flex; justify-content: space-between; }
-    #stats span.val { color: #ddd; }
+    #stats {
+      margin-left: auto; display: flex; align-items: center; gap: 12px;
+      padding: 8px 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
+    }
+    #stats .stat { display: flex; gap: 4px; }
+    #stats .stat-label { color: #777; }
+    #stats .val { color: #ddd; }
+    #panelToggle {
+      position: fixed; bottom: 8px; right: 8px; z-index: 10;
+      background: none; border: none; color: #4ecdc4; font-size: 16px;
+      cursor: pointer; padding: 2px 6px; opacity: 0.6;
+    }
+    #panelToggle:hover { opacity: 1; }
+    #bottomBar.collapsed { display: none; }
+    #ctxMenu {
+      display: none; position: fixed; z-index: 100;
+      background: rgba(20, 20, 40, 0.96); border: 1px solid #444;
+      border-radius: 4px; padding: 4px 0; min-width: 160px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    #ctxMenu .item {
+      padding: 6px 14px; color: #ddd; font-size: 14px; cursor: pointer;
+    }
+    #ctxMenu .item:hover { background: rgba(78, 205, 196, 0.15); color: #fff; }
+    #ctxMenu .item.disabled { color: #555; pointer-events: none; }
+    #ctxMenu .sep { height: 1px; background: #333; margin: 4px 0; }
   </style>
 </head>
 <body>
   <div id="controls">
-    <p><kbd>Click</kbd> place points &nbsp; <kbd>Enter</kbd> close &nbsp; <kbd>Space</kbd> simulate &nbsp; <kbd>R</kbd> reset</p>
+    <p><kbd>Click</kbd> place points &nbsp; <kbd>Enter</kbd> close &nbsp; <kbd>Space</kbd> simulate &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>+</kbd> add &nbsp; <kbd>Tab</kbd> panel</p>
   </div>
-  <div id="panel">
-    <h3>Simulation</h3>
-    <label>Count <input type="number" id="count" value="0" min="0" max="200" title="0 = auto from perimeter"></label>
-    <label>Radius <input type="number" id="radius" value="50" min="10" max="200" step="5"></label>
-    <hr>
-    <h3>Forces</h3>
-    <label>Boundary <input type="number" id="kBoundary" value="0.3" min="0.01" max="2" step="0.01"></label>
-    <label>Corner <input type="number" id="kCorner" value="0.15" min="0.01" max="1" step="0.01"></label>
-    <label>Repulsion <input type="number" id="kRepulsion" value="3" min="0.1" max="20" step="0.5"></label>
-    <label>Damping <input type="number" id="damping" value="0.92" min="0.5" max="0.99" step="0.01"></label>
-    <label>Max Force <input type="number" id="maxForce" value="5" min="1" max="20" step="0.5"></label>
-    <hr>
-    <button id="btnSimulate">Simulate (Space)</button>
-    <button id="btnAdd">+ Add Sprinkler</button>
-    <button id="btnReset">Reset (R)</button>
+  <button id="panelToggle" title="Toggle panel (Tab)">&#9776;</button>
+  <div id="bottomBar">
+    <div id="panel">
+      <label>Count <input type="number" id="count" value="0" min="0" max="200" title="0 = auto"></label>
+      <label>Radius <input type="number" id="radius" value="50" min="10" max="200" step="5"></label>
+      <div class="sep"></div>
+      <label>Target <input type="number" id="kTarget" value="0.3" min="0.01" max="2" step="0.01"></label>
+      <label>Repulsion <input type="number" id="kRepulsion" value="3" min="0.1" max="20" step="0.5"></label>
+      <label>Damping <input type="number" id="damping" value="0.92" min="0.5" max="0.99" step="0.01"></label>
+      <label>Max Force <input type="number" id="maxForce" value="5" min="1" max="20" step="0.5"></label>
+      <div class="sep"></div>
+      <button id="btnSimulate">Simulate</button>
+      <button id="btnAdd">+ Add</button>
+      <button id="btnReset">Reset</button>
+    </div>
+    <div id="stats">
+      <div class="stat"><span class="stat-label">Perim</span> <span class="val" id="statPerimeter">—</span></div>
+      <div class="stat"><span class="stat-label">Suggested</span> <span class="val" id="statSuggested">—</span></div>
+      <div class="stat"><span class="stat-label">Actual</span> <span class="val" id="statCount">—</span></div>
+      <div class="stat"><span class="stat-label">Status</span> <span class="val" id="statStatus">—</span></div>
+    </div>
   </div>
-  <div id="stats">
-    <h3>Stats</h3>
-    <div>Perimeter <span class="val" id="statPerimeter">—</span></div>
-    <div>Suggested count <span class="val" id="statSuggested">—</span></div>
-    <div>Actual count <span class="val" id="statCount">—</span></div>
-    <div>Status <span class="val" id="statStatus">—</span></div>
+  <div id="ctxMenu">
+    <div class="item" id="ctxAddVertex">Add vertex here</div>
+    <div class="item" id="ctxDeleteVertex">Delete vertex</div>
   </div>
   <canvas id="canvas"></canvas>
   <script src="src/main.ts" type="module"></script>
