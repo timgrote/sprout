@@ -13,6 +13,16 @@ export const state = {
   simFrame: 0,
   MAX_SIM_FRAMES: 600,
   simLogs: [] as string[],
+  // Viewport (world coords in feet)
+  viewport: { panX: 0, panY: 0, zoom: 10 },
+  // Pan state (middle mouse)
+  panning: false,
+  panStartX: 0,
+  panStartY: 0,
+  panStartPanX: 0,
+  panStartPanY: 0,
+  // Mouse position in world coords (for distance feedback)
+  mouseWorld: { x: 0, y: 0 } as Point,
   // Vertex drag state
   draggingVertex: -1,
   didDrag: false,

@@ -16,6 +16,9 @@ export function readParams() {
 }
 
 export function updateStats() {
+  const zoomEl = document.getElementById("statZoom");
+  if (zoomEl) zoomEl.textContent = `${state.viewport.zoom.toFixed(1)} px/ft`;
+
   if (!state.boundaryClosed) {
     document.getElementById("statPerimeter")!.textContent = "—";
     document.getElementById("statSuggested")!.textContent = "—";
@@ -29,7 +32,7 @@ export function updateStats() {
   const settled = state.particles.filter(p => p.settled).length;
   const status = state.simulating ? `simulating (${settled}/${state.particles.length})` : state.particles.length > 0 ? "settled" : "ready";
 
-  document.getElementById("statPerimeter")!.textContent = `${Math.round(perim)}px`;
+  document.getElementById("statPerimeter")!.textContent = `${perim.toFixed(1)} ft`;
   document.getElementById("statSuggested")!.textContent = `${suggested} (overlap @ r=${radius})`;
   const perimN = state.particles.filter(p => p.type === 'perimeter').length;
   const intN = state.particles.filter(p => p.type === 'interior').length;

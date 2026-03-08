@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Sprout is a browser-based sprinkler layout sandbox. Users draw a boundary polygon, then sprinklers are placed deterministically along edges with uniform spacing — each edge gets `floor(length/radius)` sprinklers. Particles animate from the centroid to their pre-computed targets using spring physics with inter-particle repulsion for visual interest.
+Sprout is a browser-based sprinkler layout sandbox. All geometry is stored in **world coordinates (1 unit = 1 foot)** with a viewport transform (pan + zoom) for rendering. Default zoom is 10 px/ft, default radius is 15 ft. Users draw a boundary polygon, then sprinklers are placed deterministically along edges with uniform spacing — each edge gets `ceil(length/radius)` sprinklers. Particles animate from the centroid to their pre-computed targets using spring physics with inter-particle repulsion for visual interest.
 
 ## Commands
 
@@ -24,18 +24,19 @@ Modular TypeScript app rendered on a full-viewport HTML canvas (`index.html`). N
 ```
 src/
   types.ts        — Point, Particle, TargetInfo interfaces
+  viewport.ts     — Viewport type, screen/world conversion, applyTransform, zoomAt
   geometry.ts     — Vector math, polygon helpers, target computation, label positioning (pure functions)
   state.ts        — Shared mutable state object + simLog()
   ui.ts           — Panel helpers: getInput, setInput, readParams, updateStats
   simulation.ts   — Physics sim loop, startSimulation, addSprinkler, fillInterior, reset
-  renderer.ts     — draw() function (all canvas rendering)
-  events.ts       — setupEvents() — mouse, keyboard, context menu, panel buttons
+  renderer.ts     — draw() function (all canvas rendering, viewport transform, HUD)
+  events.ts       — setupEvents() — mouse, keyboard, scroll zoom, middle-mouse pan, context menu
   debug.ts        — setupDebug() — window.getState()
   main.ts         — Entry point: canvas init, resize handler, wires modules together
 ```
 
 **Dependency flow** (no circular deps):
-`types` <- `geometry` <- `state` <- `ui` <- `simulation` <- `renderer` <- `events` <- `main`
+`types` <- `viewport` <- `geometry` <- `state` <- `ui` <- `simulation` <- `renderer` <- `events` <- `main`
 
 **App flow:**
 1. **Boundary drawing** — click to place polygon vertices (labeled A, B, C...), Enter to close
@@ -54,7 +55,9 @@ src/
 
 **Logging:** Simulation events logged to console (`[sprout]` prefix) and available via `getState().logs`. Logs START config, each SETTLED event with edge/position/speed, and COMPLETE summary with per-edge actual vs optimal counts.
 
-**Debug:** `window.getState()` returns full state — vertices, edges (with actual vs optimal counts), sprinklers in perimeter order with edge assignments, and simulation logs.
+**Viewport:** Scroll wheel zooms toward cursor (CAD-style). Middle mouse button pans. All geometry stored in world coordinates (feet). `ctx.setTransform()` handles rendering. Text and fixed-size elements counter-scaled via save/translate/scale/restore pattern. Distance feedback (dashed lines with ft labels) shown while drawing polygon. Scale bar in bottom-right corner.
+
+**Debug:** `window.getState()` returns full state — viewport, vertices, edges (with actual vs optimal counts), sprinklers in perimeter order with edge assignments, and simulation logs.
 
 ## Tech Stack
 

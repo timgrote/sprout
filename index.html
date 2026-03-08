@@ -64,21 +64,24 @@
 </head>
 <body>
   <div id="controls">
-    <p><kbd>Click</kbd> place points &nbsp; <kbd>Enter</kbd> close &nbsp; <kbd>Space</kbd> simulate &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>+</kbd> add &nbsp; <kbd>Tab</kbd> panel</p>
+    <p><kbd>Click</kbd> place points &nbsp; <kbd>Enter</kbd> close &nbsp; <kbd>Space</kbd> simulate &nbsp; <kbd>F</kbd> fill &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>+</kbd> add &nbsp; <kbd>Tab</kbd> panel &nbsp; <kbd>Scroll</kbd> zoom &nbsp; <kbd>Middle drag</kbd> pan</p>
   </div>
   <button id="panelToggle" title="Toggle panel (Tab)">&#9776;</button>
   <div id="bottomBar">
     <div id="panel">
       <label>Count <input type="number" id="count" value="0" min="0" max="200" title="0 = auto"></label>
-      <label>Radius <input type="number" id="radius" value="50" min="10" max="200" step="5"></label>
+      <label>Radius <input type="number" id="radius" value="15" min="1" max="50" step="0.5"></label>
       <div class="sep"></div>
       <label>Target <input type="number" id="kTarget" value="0.3" min="0.01" max="2" step="0.01"></label>
       <label>Repulsion <input type="number" id="kRepulsion" value="3" min="0.1" max="20" step="0.5"></label>
-      <label>Damping <input type="number" id="damping" value="0.92" min="0.5" max="0.99" step="0.01"></label>
+      <label>Damping <input type="number" id="damping" value="0.85" min="0.5" max="0.99" step="0.01"></label>
       <label>Max Force <input type="number" id="maxForce" value="5" min="1" max="20" step="0.5"></label>
+      <div class="sep"></div>
+      <label>Coverage <input type="number" id="coverageFactor" value="1.0" min="0.5" max="2" step="0.1"></label>
       <div class="sep"></div>
       <button id="btnSimulate">Simulate</button>
       <button id="btnAdd">+ Add</button>
+      <button id="btnFill">Fill</button>
       <button id="btnReset">Reset</button>
     </div>
     <div id="stats">
@@ -86,6 +89,7 @@
       <div class="stat"><span class="stat-label">Suggested</span> <span class="val" id="statSuggested">—</span></div>
       <div class="stat"><span class="stat-label">Actual</span> <span class="val" id="statCount">—</span></div>
       <div class="stat"><span class="stat-label">Status</span> <span class="val" id="statStatus">—</span></div>
+      <div class="stat"><span class="stat-label">Zoom</span> <span class="val" id="statZoom">10 px/ft</span></div>
     </div>
   </div>
   <div id="ctxMenu">

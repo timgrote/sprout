@@ -3,49 +3,24 @@ import { sub, add, scale, magnitude, normalize, clampMag, polygonCentroid, polyg
 import { readParams, setInput, getInput, updateStats } from './ui';
 import { draw } from './renderer';
 
-function simulate() {
+const LERP_FRAMES = 15; // ~0.25s at 60fps
+
+function lerpAnimate() {
   state.simFrame++;
-  const p = readParams();
-  const repulsionRange = p.radius * 4;
+  const t = Math.min(state.simFrame / LERP_FRAMES, 1);
+  // Ease-out cubic for smooth deceleration
+  const ease = 1 - Math.pow(1 - t, 3);
 
   for (const pt of state.particles) {
     if (pt.settled) continue;
-
-    let force = { x: 0, y: 0 };
-
-    // Target attraction — spring force toward pre-computed destination
-    const toTarget = sub(pt.target, pt.pos);
-    const distToTarget = magnitude(toTarget);
-    force = add(force, scale(toTarget, p.kTarget));
-
-    // Inter-particle repulsion — fades out as particle approaches target
-    const repulsionFade = Math.min(1, distToTarget / (p.radius * 0.8));
-    for (const other of state.particles) {
-      if (other === pt) continue;
-      const away = sub(pt.pos, other.pos);
-      const d = magnitude(away);
-      if (d < repulsionRange && d > 1e-4) {
-        const strength = p.kRepulsion * repulsionFade * (1 - d / repulsionRange);
-        force = add(force, scale(normalize(away), strength));
-      }
-    }
-
-    force = clampMag(force, p.maxForce);
-    pt.vel = scale(add(pt.vel, force), p.damping);
-    pt.pos = add(pt.pos, pt.vel);
-
-    const speed = magnitude(pt.vel);
-    if ((distToTarget < 8 && speed < 1.5) || (distToTarget < 2) || state.simFrame > state.MAX_SIM_FRAMES) {
+    pt.pos = {
+      x: pt.vel.x + (pt.target.x - pt.vel.x) * ease,
+      y: pt.vel.y + (pt.target.y - pt.vel.y) * ease,
+    };
+    if (t >= 1) {
       pt.settled = true;
-      pt.vel = { x: 0, y: 0 };
       pt.pos = { x: pt.target.x, y: pt.target.y };
-      const settled = state.particles.filter(p => p.settled).length;
-      if (pt.type === 'interior') {
-        simLog(`SETTLED ${settled}/${state.particles.length} — interior @ (${Math.round(pt.pos.x)},${Math.round(pt.pos.y)}) dist=${distToTarget.toFixed(1)} spd=${speed.toFixed(2)}`);
-      } else {
-        const edgeLabel = `${vertexLabel(pt.edgeIndex)}-${vertexLabel((pt.edgeIndex + 1) % state.boundaryPoints.length)}`;
-        simLog(`SETTLED ${settled}/${state.particles.length} — edge ${edgeLabel} @ (${Math.round(pt.pos.x)},${Math.round(pt.pos.y)}) dist=${distToTarget.toFixed(1)} spd=${speed.toFixed(2)}`);
-      }
+      pt.vel = { x: 0, y: 0 };
     }
   }
 
@@ -76,6 +51,56 @@ function simulate() {
 
   draw();
   updateStats();
+  state.frameId = requestAnimationFrame(lerpAnimate);
+}
+
+// Physics simulation — kept for future use
+function simulate() {
+  state.simFrame++;
+  const p = readParams();
+  const repulsionRange = p.radius * 4;
+
+  for (const pt of state.particles) {
+    if (pt.settled) continue;
+
+    let force = { x: 0, y: 0 };
+
+    const toTarget = sub(pt.target, pt.pos);
+    const distToTarget = magnitude(toTarget);
+    force = add(force, scale(toTarget, p.kTarget));
+
+    const repulsionFade = Math.min(1, distToTarget / (p.radius * 0.8));
+    for (const other of state.particles) {
+      if (other === pt) continue;
+      const away = sub(pt.pos, other.pos);
+      const d = magnitude(away);
+      if (d < repulsionRange && d > 1e-4) {
+        const strength = p.kRepulsion * repulsionFade * (1 - d / repulsionRange);
+        force = add(force, scale(normalize(away), strength));
+      }
+    }
+
+    force = clampMag(force, p.maxForce);
+    pt.vel = scale(add(pt.vel, force), p.damping);
+    pt.pos = add(pt.pos, pt.vel);
+
+    const speed = magnitude(pt.vel);
+    if ((distToTarget < 0.5 && speed < 0.3) || (distToTarget < 0.15) || state.simFrame > state.MAX_SIM_FRAMES) {
+      pt.settled = true;
+      pt.vel = { x: 0, y: 0 };
+      pt.pos = { x: pt.target.x, y: pt.target.y };
+    }
+  }
+
+  if (state.particles.every(pt => pt.settled)) {
+    state.simulating = false;
+    draw();
+    updateStats();
+    return;
+  }
+
+  draw();
+  updateStats();
   state.frameId = requestAnimationFrame(simulate);
 }
 
@@ -90,12 +115,12 @@ export function startSimulation() {
 
   state.simLogs.length = 0;
   state.simFrame = 0;
-  const perim = Math.round(polygonPerimeter(state.boundaryPoints));
+  const perim = polygonPerimeter(state.boundaryPoints);
   const lengths = edgeLengths(state.boundaryPoints);
-  simLog(`START — ${state.boundaryPoints.length} vertices, perimeter ${perim}px, radius ${params.radius}`);
+  simLog(`START — ${state.boundaryPoints.length} vertices, perimeter ${perim.toFixed(1)} ft, radius ${params.radius}`);
   for (let i = 0; i < state.boundaryPoints.length; i++) {
     const intervals = Math.floor(lengths[i] / params.radius);
-    simLog(`  edge ${vertexLabel(i)}-${vertexLabel((i + 1) % state.boundaryPoints.length)}: ${Math.round(lengths[i])}px → ${intervals} sprinklers (spacing ${(lengths[i] / intervals).toFixed(1)}px)`);
+    simLog(`  edge ${vertexLabel(i)}-${vertexLabel((i + 1) % state.boundaryPoints.length)}: ${lengths[i].toFixed(1)} ft → ${intervals} sprinklers (spacing ${(lengths[i] / intervals).toFixed(1)} ft)`);
   }
   simLog(`  total targets: ${targets.length}, spawning: ${n}`);
 
@@ -104,11 +129,9 @@ export function startSimulation() {
   state.interiorPlaced = false;
   state.particles = [];
   for (let i = 0; i < n; i++) {
-    const angle = (i / n) * Math.PI * 2;
-    const jitter = 1 + Math.random();
     state.particles.push({
-      pos: { x: centroid.x + Math.cos(angle) * jitter, y: centroid.y + Math.sin(angle) * jitter },
-      vel: { x: 0, y: 0 },
+      pos: { x: centroid.x, y: centroid.y },
+      vel: { x: centroid.x, y: centroid.y }, // stash origin for lerp
       radius: params.radius,
       settled: false,
       target: targets[i].pos,
@@ -119,7 +142,7 @@ export function startSimulation() {
 
   state.simulating = true;
   state.simFrame = 0;
-  state.frameId = requestAnimationFrame(simulate);
+  state.frameId = requestAnimationFrame(lerpAnimate);
 }
 
 export function addSprinkler() {
@@ -190,14 +213,14 @@ export function addSprinkler() {
 
   for (let j = 0; j < currentOnEdge.length; j++) {
     const pt = currentOnEdge[j].particle;
+    pt.vel = { x: pt.pos.x, y: pt.pos.y }; // stash current pos as origin
     pt.target = newTargets[j];
     pt.settled = false;
-    pt.vel = { x: (Math.random() - 0.5) * 0.3, y: (Math.random() - 0.5) * 0.3 };
   }
 
   state.particles.push({
     pos: { x: centroid.x, y: centroid.y },
-    vel: { x: 0, y: 0 },
+    vel: { x: centroid.x, y: centroid.y }, // stash origin for lerp
     radius: params.radius,
     settled: false,
     target: newTargets[newTargets.length - 1],
@@ -208,7 +231,7 @@ export function addSprinkler() {
   setInput("count", state.particles.length);
   state.simulating = true;
   state.simFrame = 0;
-  state.frameId = requestAnimationFrame(simulate);
+  state.frameId = requestAnimationFrame(lerpAnimate);
 }
 
 export function fillInterior() {
@@ -230,11 +253,9 @@ export function fillInterior() {
   simLog(`FILL — spawning ${targets.length} interior sprinklers (coverage factor ${coverageFactor})`);
 
   for (let i = 0; i < targets.length; i++) {
-    const angle = (i / targets.length) * Math.PI * 2;
-    const jitter = 1 + Math.random();
     state.particles.push({
-      pos: { x: centroid.x + Math.cos(angle) * jitter, y: centroid.y + Math.sin(angle) * jitter },
-      vel: { x: 0, y: 0 },
+      pos: { x: centroid.x, y: centroid.y },
+      vel: { x: centroid.x, y: centroid.y }, // stash origin for lerp
       radius: params.radius,
       settled: false,
       target: targets[i],
@@ -246,7 +267,7 @@ export function fillInterior() {
   state.interiorPlaced = true;
   state.simulating = true;
   state.simFrame = 0;
-  state.frameId = requestAnimationFrame(simulate);
+  state.frameId = requestAnimationFrame(lerpAnimate);
 }
 
 export function reset() {

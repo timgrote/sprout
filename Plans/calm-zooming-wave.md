@@ -1,136 +1,115 @@
-# Uniform Sprinkler Placement — Sequential Edge-Aware Algorithm
+# Real-World Coordinate System, Distance Feedback, Pan & Zoom
 
 ## Context
 
-The current force-directed simulation (all particles spawned at centroid simultaneously) produces uneven distribution:
-- **Corner stacking** — corner attraction locks two sprinklers on top of each other at vertices (e.g. sprinklers 12+13 both at vertex B)
-- **Corner gaps** — repulsion pushes edge sprinklers away from corner sprinklers, creating dry spots near vertices
-- **Unbalanced edges** — chaotic all-at-once spawn means some edges get too many, others too few (A-B got 12 vs optimal 10, D-A got 5 vs optimal 7)
+Sprout currently operates in raw canvas pixels — distances and radius have no real-world meaning. Tim works in feet and wants to see actual measurements while designing layouts, like a lightweight CAD tool. This means:
 
-The force sim is fun to watch but unreliable for uniform coverage. Tim wants a placement algorithm that guarantees even spacing — particularly around corners.
+1. A coordinate system where 1 unit = 1 foot, with a configurable zoom (pixels per foot)
+2. Live distance feedback while drawing the polygon (distance to last point and to closing point)
+3. Scroll wheel zoom (toward cursor, standard CAD behavior)
+4. Middle mouse button pan
 
-## The Problem Mathematically
+## Approach: Viewport Transform
 
-Given a polygon with vertices V0..Vn and radius r, place N sprinklers on the boundary such that:
-1. Every point on the boundary is within r of at least one sprinkler
-2. Spacing between adjacent sprinklers is as uniform as possible
-3. Corner vertices get exactly one sprinkler (shared between both edges)
-4. The animation still looks cool (particles travel from center to their target)
+Store all geometry in **world coordinates (feet)**. Maintain a viewport with pan offset and zoom level. Use `ctx.setTransform()` for rendering — all world-space drawing happens automatically, and only text/fixed-size elements need counter-scaling.
 
-## Algorithm: Sequential Deterministic Placement with Animated Migration
-
-### Phase 1 — Compute target positions (deterministic, before animation)
-
-**Step 1: Assign sprinklers per edge**
-
-For each edge i with length L_i:
 ```
-intervals_i = floor(L_i / r)
+World-to-Screen: screenX = (worldX - panX) * zoom
+Screen-to-World: worldX = screenX / zoom + panX
 ```
 
-Total sprinklers N = sum of all intervals_i. Corner sprinklers are shared — each vertex gets one sprinkler that "belongs to" the edge starting at that vertex.
+**Default zoom: 10 px/ft** — shows ~192 x 108 ft on a 1920x1080 screen. Comfortable for residential yards.
 
-**Step 2: Compute exact positions along each edge**
+**Default radius: 15 ft** (was 50 px) — realistic sprinkler throw radius.
 
-For edge i from vertex V_i to V_{i+1} with length L_i and intervals_i sprinklers:
-```
-spacing_i = L_i / intervals_i
-```
+## Files to Create
 
-Sprinkler positions on edge i:
-```
-P_{i,0} = V_i                              (the corner sprinkler)
-P_{i,j} = V_i + (j * spacing_i / L_i) * (V_{i+1} - V_i)   for j = 1..intervals_i - 1
-```
-
-Note: the last position P_{i, intervals_i} would be V_{i+1}, but that's the corner sprinkler of the NEXT edge, so we don't place it here. This is how corners are shared.
-
-**Example — 500x350 rectangle, r=50:**
-
-| Edge | Length | Intervals | Spacing | Positions |
-|------|--------|-----------|---------|-----------|
-| A-B | 500 | 10 | 50.0 | A, A+50, A+100, ..., A+450 |
-| B-C | 350 | 7 | 50.0 | B, B+50, B+100, ..., B+300 |
-| C-D | 500 | 10 | 50.0 | C, C+50, C+100, ..., C+450 |
-| D-A | 350 | 7 | 50.0 | D, D+50, D+100, ..., D+300 |
-
-Total: 34 sprinklers. Every sprinkler is exactly 50px from its neighbors. Corners get exactly one sprinkler each.
-
-**Edge case — non-exact division:**
-
-If L_i = 520 and r = 50: intervals = floor(520/50) = 10, spacing = 520/10 = 52px. Slightly wider than r but the best uniform distribution for this edge. The per-edge spacing adapts to the actual edge length.
-
-### Phase 2 — Animate (the fun part)
-
-All N target positions are pre-computed. Now we animate:
-
-1. Spawn all particles at centroid (same as current)
-2. Each particle has a `target: Point` property — its computed destination
-3. Force model changes:
-   - **Remove** corner attraction force entirely (no more corner stacking)
-   - **Replace** boundary attraction with **target attraction**: spring force toward the particle's assigned target position
-   - **Keep** inter-particle repulsion (makes the migration visually interesting as they jostle)
-4. Settlement: when a particle is within 2px of its target and moving slowly, snap to exact target position
-
-This gives us the best of both worlds: deterministic final positions (guaranteed uniform) with the animated migration from center (still looks emergent and cool).
-
-### Phase 3 — Add Sprinkler (incremental)
-
-When adding a sprinkler to an existing settled layout:
-1. Find the edge with the largest gap (max spacing between adjacent sprinklers)
-2. Compute new target: midpoint of the largest gap on that edge
-3. Recompute targets for other sprinklers on that edge to redistribute evenly
-4. Unsettle that edge's sprinklers, animate redistribution
+### `src/viewport.ts` (~40 lines)
+New module — coordinate conversion and zoom logic:
+- `screenToWorld(sx, sy, vp)` / `worldToScreen(wx, wy, vp)`
+- `applyTransform(ctx, vp)` — sets `ctx.setTransform()` for world-space drawing
+- `resetTransform(ctx)` — back to screen space for HUD elements
+- `zoomAt(vp, screenX, screenY, factor)` — zoom toward cursor (adjusts pan so world point under cursor stays fixed)
 
 ## Files to Modify
 
-- `src/main.ts` — replace simulation logic (~485 lines, substantial rewrite of `startSimulation()`, `simulate()`, `addSprinkler()`)
+### `src/state.ts`
+Add to state object:
+- `viewport: { panX: 0, panY: 0, zoom: 10 }` — camera state
+- `panning: false` + `panStart*` — middle-mouse drag state
+- `mouseWorld: {x:0, y:0}` — current mouse position in world coords (for distance feedback)
 
-## Implementation Plan
+### `src/events.ts` (heaviest change)
+Every mouse handler currently does `e.clientX - rect.left` and uses raw pixels. Change to:
+- Convert to screen coords (as before), then `screenToWorld()` before storing/comparing
+- Hit-testing (vertex drag, hover) compares screen-pixel distances (convert boundary points to screen first)
+- **New: `wheel` event** — `zoomAt()` toward cursor, redraw
+- **New: middle-mouse pan** — `mousedown` button===1 starts pan, `mousemove` updates `viewport.panX/Y`, `mouseup` ends
+- **Track `state.mouseWorld`** on every mousemove — triggers redraw during drawing phase for distance lines
+- Prevent middle-click context menu via `auxclick`
 
-### 1. Add `target` to Particle interface
-```typescript
-interface Particle {
-  pos: Point;
-  vel: Point;
-  radius: number;
-  settled: boolean;
-  target: Point;     // <-- new: pre-computed destination
-}
-```
+### `src/renderer.ts` (second heaviest)
+Restructure `draw()`:
+1. Clear canvas in screen space
+2. `applyTransform()` — switch to world space
+3. Draw boundary, particles, labels — same geometry, but:
+   - Line widths: `desiredScreenPx / zoom` (e.g., `2 / zoom` for boundary)
+   - Vertex dots, sprinkler heads: radius in `px / zoom`
+   - Text labels: `ctx.save(); ctx.translate(worldX, worldY); ctx.scale(1/zoom, 1/zoom); fillText(); ctx.restore()`
+4. `resetTransform()` — switch to screen space for HUD
+5. **New: distance feedback** — while drawing (boundary not closed):
+   - Dashed line from last vertex to mouse, labeled with distance in feet
+   - Dashed line from mouse to first vertex (closing distance), labeled
+6. **New: scale bar** — bottom-right corner, shows a reference length in feet
+7. Status text stays in screen space, units change from `px` to `ft`
 
-### 2. New function: `computeTargetPositions(boundary, radius) → Point[]`
-- Walk each edge, compute intervals = floor(len/r), spacing = len/intervals
-- Place corner sprinkler at vertex, then evenly spaced along edge
-- Return flat array of all target positions in perimeter order
+### `src/simulation.ts`
+Adjust constants that were calibrated for pixels (now feet):
+- Settlement: `distToTarget < 8` → `distToTarget < 0.5` (ft), `speed < 1.5` → `speed < 0.1`
+- Spawn jitter: `1 + Math.random()` → `0.1 + Math.random() * 0.1`
+- Velocity nudge in addSprinkler: `0.3` → `0.03`
+- Log messages: `"px"` → `"ft"`
+- Repulsion range (`radius * 4`) stays — same relative scale
 
-### 3. Rewrite `startSimulation()`
-- Compute targets via `computeTargetPositions()`
-- Spawn N particles at centroid with jitter (same visual as before)
-- Assign each particle its target (in perimeter order)
+### `index.html`
+- Radius input: `value="15" min="1" max="50" step="0.5"` (was 50/10/200/5)
+- Add zoom stat: `<div class="stat"><span class="stat-label">Zoom</span> <span class="val" id="statZoom">10 px/ft</span></div>`
+- Update help text: add `<kbd>Scroll</kbd> zoom` and `<kbd>Middle drag</kbd> pan`
 
-### 4. Modify `simulate()` force model
-- Replace boundary attraction with: `targetForce = K_TARGET * (target - pos)`
-- Remove corner attraction force entirely
-- Keep inter-particle repulsion (visual interest during migration)
-- Settlement: `dist(pos, target) < 2 AND speed < 0.08` → snap to target
+### `src/ui.ts`
+- `updateStats()`: change `"px"` → `"ft"` in perimeter display
+- Add zoom level update to stats (`statZoom`)
 
-### 5. Rewrite `addSprinkler()`
-- Find edge with largest max gap between adjacent settled sprinklers
-- Recompute even spacing for that edge with +1 sprinkler
-- Assign new targets to all sprinklers on that edge
-- Unsettle them, animate redistribution
+### `src/debug.ts`
+- Add `viewport` and `zoom` to `getState()` output
 
-### 6. Update `optimalSprinklerCount()` — already correct
-The existing `sum(floor(L_i / r))` formula matches this algorithm exactly.
+## Implementation Order
+
+1. `src/viewport.ts` — new file, no deps
+2. `src/state.ts` — add viewport + pan state
+3. `src/events.ts` — coordinate conversion, wheel, pan, mouse tracking
+4. `src/renderer.ts` — viewport transform, counter-scaling, distance feedback, scale bar
+5. `index.html` — radius defaults, zoom stat, help text
+6. `src/ui.ts` — feet labels, zoom display
+7. `src/simulation.ts` — threshold/jitter tuning, log text
+8. `src/debug.ts` — viewport in debug output
+
+## Gotchas
+
+- **Context menu position** (`ctxMenu.style.left/top`) uses `e.clientX/clientY` — stays as-is (DOM element, screen space). But `state.ctxPoint` must store world coords.
+- **`click` only fires for button 0**, so middle-click pan won't accidentally place vertices.
+- **Text at high zoom** will be enormous without counter-scaling — every `fillText` call in world space needs the save/translate/scale/restore pattern.
+- **Line widths** in world space: a `lineWidth` of 2 at zoom=10 renders as 20 screen pixels. Always divide by zoom.
 
 ## Verification
 
-1. `bun build src/main.ts --outdir dist --target browser` succeeds
-2. Draw rectangle, press Space — particles migrate from center to targets
-3. Final positions: each edge has `floor(L/r)` sprinklers at `L/floor(L/r)` spacing
-4. Corners have exactly ONE sprinkler each (no stacking)
-5. No gap between corner sprinkler and nearest edge sprinkler larger than the per-edge spacing
-6. `getState().edges` shows actual == optimal for every edge
-7. Add Sprinkler inserts into the edge with the most space, redistributes evenly
-8. Animation still looks emergent/fun (repulsion during migration)
+1. `bun run build` succeeds
+2. Draw polygon — distances shown in feet between cursor and last/first vertex
+3. Enter closes, simulates, fills — sprinklers placed correctly with radius in feet
+4. Scroll wheel zooms in/out toward cursor — geometry stays stable
+5. Middle mouse drag pans the view
+6. Vertex drag still works with live preview
+7. Right-click context menu works (positioned correctly in screen space)
+8. Stats show feet, zoom level displayed
+9. `getState()` includes viewport info
+10. Scale bar renders correctly at different zoom levels

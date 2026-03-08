@@ -3,20 +3,48 @@ import { nearestPointOnBoundary, computeTargetPositions, vertexLabel } from './g
 import { startSimulation, addSprinkler, fillInterior, reset } from './simulation';
 import { draw } from './renderer';
 import { readParams, setInput, updateStats } from './ui';
+import { screenToWorld, worldToScreen, zoomAt } from './viewport';
 
 export function setupEvents() {
   const { canvas } = state;
 
+  function mouseToScreen(e: MouseEvent): { sx: number; sy: number } {
+    const rect = canvas.getBoundingClientRect();
+    return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
+  }
+
+  function mouseToWorld(e: MouseEvent) {
+    const { sx, sy } = mouseToScreen(e);
+    return screenToWorld(sx, sy, state.viewport);
+  }
+
+  function worldDistToScreen(worldDist: number): number {
+    return worldDist * state.viewport.zoom;
+  }
+
   // --- Vertex dragging ---
 
   canvas.addEventListener("mousedown", (e) => {
+    // Middle mouse — start pan
+    if (e.button === 1) {
+      e.preventDefault();
+      state.panning = true;
+      state.panStartX = e.clientX;
+      state.panStartY = e.clientY;
+      state.panStartPanX = state.viewport.panX;
+      state.panStartPanY = state.viewport.panY;
+      canvas.style.cursor = "grabbing";
+      return;
+    }
+
     if (!state.boundaryClosed || state.simulating) return;
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    if (e.button !== 0) return;
+
+    const { sx, sy } = mouseToScreen(e);
     for (let i = 0; i < state.boundaryPoints.length; i++) {
-      const dx = mx - state.boundaryPoints[i].x;
-      const dy = my - state.boundaryPoints[i].y;
+      const sp = worldToScreen(state.boundaryPoints[i].x, state.boundaryPoints[i].y, state.viewport);
+      const dx = sx - sp.x;
+      const dy = sy - sp.y;
       if (Math.sqrt(dx * dx + dy * dy) < state.DRAG_HIT_RADIUS) {
         state.draggingVertex = i;
         state.didDrag = false;
@@ -28,12 +56,22 @@ export function setupEvents() {
   });
 
   canvas.addEventListener("mousemove", (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const { sx, sy } = mouseToScreen(e);
+    const world = screenToWorld(sx, sy, state.viewport);
+    state.mouseWorld = world;
+
+    // Panning
+    if (state.panning) {
+      const dx = e.clientX - state.panStartX;
+      const dy = e.clientY - state.panStartY;
+      state.viewport.panX = state.panStartPanX - dx / state.viewport.zoom;
+      state.viewport.panY = state.panStartPanY - dy / state.viewport.zoom;
+      draw();
+      return;
+    }
 
     if (state.draggingVertex >= 0) {
-      state.boundaryPoints[state.draggingVertex] = { x: mx, y: my };
+      state.boundaryPoints[state.draggingVertex] = { x: world.x, y: world.y };
       state.didDrag = true;
       if (state.particles.length > 0) {
         if (state.interiorPlaced) {
@@ -62,16 +100,28 @@ export function setupEvents() {
     if (state.boundaryClosed && !state.simulating) {
       let overVertex = false;
       for (const bp of state.boundaryPoints) {
-        if (Math.sqrt((mx - bp.x) ** 2 + (my - bp.y) ** 2) < state.DRAG_HIT_RADIUS) {
+        const sp = worldToScreen(bp.x, bp.y, state.viewport);
+        if (Math.sqrt((sx - sp.x) ** 2 + (sy - sp.y) ** 2) < state.DRAG_HIT_RADIUS) {
           overVertex = true;
           break;
         }
       }
       canvas.style.cursor = overVertex ? "grab" : "crosshair";
     }
+
+    // Redraw during drawing phase for distance feedback
+    if (!state.boundaryClosed && state.boundaryPoints.length > 0) {
+      draw();
+    }
   });
 
-  canvas.addEventListener("mouseup", () => {
+  canvas.addEventListener("mouseup", (e) => {
+    if (state.panning && e.button === 1) {
+      state.panning = false;
+      canvas.style.cursor = "crosshair";
+      return;
+    }
+
     if (state.draggingVertex >= 0 && state.didDrag) {
       state.draggingVertex = -1;
       canvas.style.cursor = "crosshair";
@@ -86,12 +136,27 @@ export function setupEvents() {
 
   canvas.addEventListener("click", (e) => {
     if (state.boundaryClosed || state.simulating || state.didDrag) { state.didDrag = false; return; }
-    const rect = canvas.getBoundingClientRect();
-    state.boundaryPoints.push({
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    });
+    const world = mouseToWorld(e);
+    state.boundaryPoints.push(world);
     draw();
+  });
+
+  // --- Scroll wheel zoom ---
+
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const { sx, sy } = mouseToScreen(e);
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(state.viewport, sx, sy, factor);
+    // Update mouse world position after zoom
+    state.mouseWorld = screenToWorld(sx, sy, state.viewport);
+    draw();
+    updateStats();
+  }, { passive: false });
+
+  // Prevent middle-click paste/autoscroll
+  canvas.addEventListener("auxclick", (e) => {
+    if (e.button === 1) e.preventDefault();
   });
 
   // --- Keyboard ---
@@ -130,15 +195,15 @@ export function setupEvents() {
     e.preventDefault();
     if (!state.boundaryClosed || state.simulating) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    state.ctxPoint = { x: mx, y: my };
+    const { sx, sy } = mouseToScreen(e);
+    const world = screenToWorld(sx, sy, state.viewport);
+    state.ctxPoint = world;
 
     state.ctxVertexIndex = -1;
     for (let i = 0; i < state.boundaryPoints.length; i++) {
-      const dx = mx - state.boundaryPoints[i].x;
-      const dy = my - state.boundaryPoints[i].y;
+      const sp = worldToScreen(state.boundaryPoints[i].x, state.boundaryPoints[i].y, state.viewport);
+      const dx = sx - sp.x;
+      const dy = sy - sp.y;
       if (Math.sqrt(dx * dx + dy * dy) < state.DRAG_HIT_RADIUS) {
         state.ctxVertexIndex = i;
         break;
@@ -170,7 +235,7 @@ export function setupEvents() {
       const a = state.boundaryPoints[state.ctxVertexIndex];
       const b = state.boundaryPoints[(state.ctxVertexIndex + 1) % state.boundaryPoints.length];
       const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      simLog(`ADD VERTEX after ${vertexLabel(state.ctxVertexIndex)} at midpoint (${Math.round(mid.x)},${Math.round(mid.y)})`);
+      simLog(`ADD VERTEX after ${vertexLabel(state.ctxVertexIndex)} at midpoint (${mid.x.toFixed(1)},${mid.y.toFixed(1)})`);
       state.boundaryPoints.splice(state.ctxVertexIndex + 1, 0, mid);
     } else {
       const nearest = nearestPointOnBoundary(state.ctxPoint, state.boundaryPoints);
@@ -190,7 +255,8 @@ export function setupEvents() {
   ctxDelBtn.addEventListener("click", () => {
     hideCtxMenu();
     if (state.ctxVertexIndex < 0 || state.boundaryPoints.length <= 3) return;
-    simLog(`DELETE VERTEX ${vertexLabel(state.ctxVertexIndex)} at (${Math.round(state.boundaryPoints[state.ctxVertexIndex].x)},${Math.round(state.boundaryPoints[state.ctxVertexIndex].y)})`);
+    const bp = state.boundaryPoints[state.ctxVertexIndex];
+    simLog(`DELETE VERTEX ${vertexLabel(state.ctxVertexIndex)} at (${bp.x.toFixed(1)},${bp.y.toFixed(1)})`);
     state.boundaryPoints.splice(state.ctxVertexIndex, 1);
     if (state.interiorPlaced) state.pendingInteriorRefill = true;
     state.interiorPlaced = false;

@@ -5,7 +5,7 @@ import { getInput } from './ui';
 export function setupDebug() {
   (window as any).getState = () => {
     const sorted = getSortedParticleIndices(state.particles, state.boundaryPoints);
-    const perim = state.boundaryClosed ? Math.round(polygonPerimeter(state.boundaryPoints)) : 0;
+    const perim = state.boundaryClosed ? polygonPerimeter(state.boundaryPoints) : 0;
     const radius = getInput("radius");
     const lengths = state.boundaryClosed ? edgeLengths(state.boundaryPoints) : [];
 
@@ -18,18 +18,20 @@ export function setupDebug() {
     const intSorted = sorted.filter(i => state.particles[i].type === 'interior');
 
     return {
-      perimeter: perim,
+      perimeter: +perim.toFixed(1),
+      unit: 'ft',
       suggestedCount: state.boundaryClosed ? optimalSprinklerCount(state.boundaryPoints, radius) : 0,
       simulating: state.simulating,
       interiorPlaced: state.interiorPlaced,
+      viewport: { ...state.viewport },
       vertices: state.boundaryPoints.map((p, i) => ({
         label: vertexLabel(i),
-        x: Math.round(p.x),
-        y: Math.round(p.y),
+        x: +p.x.toFixed(2),
+        y: +p.y.toFixed(2),
       })),
       edges: lengths.map((len, i) => ({
         label: `${vertexLabel(i)}-${vertexLabel((i + 1) % state.boundaryPoints.length)}`,
-        length: Math.round(len),
+        length: +len.toFixed(1),
         optimal: Math.ceil(len / radius),
         actual: edgeCounts[i],
       })),
@@ -37,8 +39,8 @@ export function setupDebug() {
         const pt = state.particles[pIdx];
         return {
           num: displayIdx + 1,
-          x: Math.round(pt.pos.x),
-          y: Math.round(pt.pos.y),
+          x: +pt.pos.x.toFixed(2),
+          y: +pt.pos.y.toFixed(2),
           settled: pt.settled,
           type: 'perimeter' as const,
           edge: `${vertexLabel(pt.edgeIndex)}-${vertexLabel((pt.edgeIndex + 1) % state.boundaryPoints.length)}`,
@@ -48,8 +50,8 @@ export function setupDebug() {
         const pt = state.particles[pIdx];
         return {
           num: perimSorted.length + displayIdx + 1,
-          x: Math.round(pt.pos.x),
-          y: Math.round(pt.pos.y),
+          x: +pt.pos.x.toFixed(2),
+          y: +pt.pos.y.toFixed(2),
           settled: pt.settled,
           type: 'interior' as const,
         };
