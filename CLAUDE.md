@@ -18,7 +18,24 @@ No test runner or linter configured.
 
 ## Architecture
 
-Single-file TypeScript app (`src/main.ts`) rendered on a full-viewport HTML canvas (`index.html`). No framework, no dependencies. All state is module-level variables.
+Modular TypeScript app rendered on a full-viewport HTML canvas (`index.html`). No framework, no dependencies. All mutable state lives in a single shared `state` object (`src/state.ts`).
+
+**Module structure:**
+```
+src/
+  types.ts        — Point, Particle, TargetInfo interfaces
+  geometry.ts     — Vector math, polygon helpers, target computation, label positioning (pure functions)
+  state.ts        — Shared mutable state object + simLog()
+  ui.ts           — Panel helpers: getInput, setInput, readParams, updateStats
+  simulation.ts   — Physics sim loop, startSimulation, addSprinkler, fillInterior, reset
+  renderer.ts     — draw() function (all canvas rendering)
+  events.ts       — setupEvents() — mouse, keyboard, context menu, panel buttons
+  debug.ts        — setupDebug() — window.getState()
+  main.ts         — Entry point: canvas init, resize handler, wires modules together
+```
+
+**Dependency flow** (no circular deps):
+`types` <- `geometry` <- `state` <- `ui` <- `simulation` <- `renderer` <- `events` <- `main`
 
 **App flow:**
 1. **Boundary drawing** — click to place polygon vertices (labeled A, B, C...), Enter to close
